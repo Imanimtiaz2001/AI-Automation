@@ -1,0 +1,22 @@
+{
+  "name": "placidway-social-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Daily PlacidWay -> Facebook post automation built on n8n (take-home assessment).",
+  "scripts": {
+    "build": "node scripts/build-workflows.js",
+    "test": "node --test test/*.test.js",
+    "check": "npm run build && npm test",
+    "samples": "node scripts/check-samples.js",
+    "samples:live": "node scripts/generate-samples.js",
+    "test:e2e": "node test/e2e/scenarios.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.12",
+    "pg": "^8.23.1"
+  },
+  "author": "Iman"
+}

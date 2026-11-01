@@ -1,0 +1,75 @@
+# PlacidWay -> Facebook autopost: n8n + external task runner + Postgres.
+#   cp .env.example .env && cp .env.secrets.example .env.secrets   (fill both)
+#   ./scripts/bootstrap.sh        (starts the stack, imports credentials + workflows, activates them)
+name: placidway-autopost
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-placidway}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: placidway                       # application data (pw_posts, pw_run_log, ...)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro   # creates the "n8n" database + the app schema on first start
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-placidway} -d placidway"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION:-2.45.5}
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    env_file: .env                                  # PW_* run configuration (no API secrets in here)
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-placidway}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env}
+      GENERIC_TIMEZONE: ${PW_TIMEZONE:-America/Denver}
+      TZ: ${PW_TIMEZONE:-America/Denver}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}   # must be reachable by the reviewer's phone in approval mode
+      N8N_PROXY_HOPS: ${N8N_PROXY_HOPS:-0}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"         # Config node reads PW_* variables
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_RUNNERS_MODE: external                    # Code nodes run in the isolated task-runner container
+      N8N_RUNNERS_BROKER_LISTEN_ADDRESS: 0.0.0.0
+      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN:?Set N8N_RUNNERS_AUTH_TOKEN in .env}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "720"                # keep 30 days of executions (the app keeps its own run log)
+      PW_DB_HOST: postgres
+      PW_DB_NAME: placidway
+      PW_DB_USER: ${POSTGRES_USER:-placidway}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows:ro
+      - ./scripts:/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5678/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  task-runners:
+    image: n8nio/runners:${N8N_VERSION:-2.45.5}
+    restart: unless-stopped
+    environment:
+      N8N_RUNNERS_TASK_BROKER_URI: http://n8n:5679
+      N8N_RUNNERS_AUTH_TOKEN: ${N8N_RUNNERS_AUTH_TOKEN}
+    depends_on:
+      - n8n
+
+volumes:
+  pgdata:
+  n8n_data:

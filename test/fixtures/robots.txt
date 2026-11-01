@@ -1,0 +1,12 @@
+# Fixture modelled on a typical CMS robots.txt (the live file is fetched at runtime)
+User-agent: *
+Disallow: /Medical-Tourism-Patients/
+Disallow: /Medical-Tourism-Providers/Login
+Disallow: /*?search=
+Disallow: /admin/
+Allow: /
+
+User-agent: BadBot
+Disallow: /
+
+Sitemap: https://www.placidway.com/sitemap.xml
